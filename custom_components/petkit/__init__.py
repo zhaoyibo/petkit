@@ -3,6 +3,7 @@ import copy
 import logging
 import hashlib
 import datetime
+import time
 import voluptuous as vol
 
 from homeassistant.core import HomeAssistant
@@ -435,7 +436,16 @@ class FeederDevice(PetkitDevice):
         return self.feed_state_attrs().get('realAmountTotal', 0)
 
     def feed_state_attrs(self):
-        return self.detail.get('state', {}).get('feedState') or {}
+        feedState = self.detail.get('state', {}).get('feedState') or {}
+        if self.device_type == 'd4':
+            plans = {}
+            for k, v in feedState.pop('feedTimes', {}).items():
+                h, m = divmod(int(k) // 60, 60)
+                s = 'fed' if v == 1 else 'plan' if v == 3 else str(v)
+                plans['%d:%02d' % (h, m)] = s
+            if plans:
+                feedState['feedPlans'] = plans
+        return feedState
 
     @property
     def eat_amount(self):
@@ -620,6 +630,13 @@ class LitterDevice(PetkitDevice):
         }
         return dic.get(evt, evt)
 
+    def convert_timestamp(self, result):
+        timestamp_fields = ['timestamp', 'timeIn', 'timeOut', 'startTime']
+        for t in timestamp_fields:
+            timestamp = result.get(t, 0)
+            if timestamp:
+                result[t] = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(timestamp))
+
     def last_record_attrs(self, only_event=None):
         rls = copy.deepcopy(self.records)
         if not rls:
@@ -628,11 +645,13 @@ class LitterDevice(PetkitDevice):
         if only_event:
             rls.reverse()
             for v in rls:
-                if only_event == v.get('eventType'):
+                if only_event == v.get('eventType') and v.get('content'):
                     lst = v
                     break
         ctx = lst.pop('content', None) or {}
-        return {**lst, **ctx}
+        result = {**lst, **ctx}
+        self.convert_timestamp(result)
+        return result
 
     @property
     def hass_sensor(self):
