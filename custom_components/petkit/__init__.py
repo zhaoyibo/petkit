@@ -768,22 +768,29 @@ class LitterDevice(PetkitDevice):
 
     @property
     def action(self):
-        return {
+        return None if self.device_type == 'T4' else {
             0: 'cleanup',
             2: 'deodorize',
             9: 'maintain',
         }.get(self.work_mode, None)
 
+    def deodorant_left_days(self):
+        return self.status.get('deodorantLeftDays', -1)
+
     @property
     def actions(self):
-        return {
+        actions = {
             'cleanup':   ['start', 0],
             'pause':     ['stop', self.work_mode],
             'end':       ['end', self.work_mode],
             'continue':  ['continue', self.work_mode],
             'deodorize': ['start', 2],
             'maintain':  ['start', 9],
+            'empty':     ['start', 1],
         }
+        if self.deodorant_left_days() < 0:
+            del actions['deodorize']
+        return actions
 
     async def select_action(self, action, **kwargs):
         act, val = self.actions.get(action, [None, 0])
