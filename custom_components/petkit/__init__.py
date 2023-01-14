@@ -737,17 +737,34 @@ class LitterDevice(PetkitDevice):
             'deviceId': self.device_id,
         }
         if self.device_type == 't4':
-            pms['date'] = datetime.datetime.today().strftime('%Y%m%d')
-        rsp = None
-        try:
-            rsp = await self.account.request(api, pms)
-            rdt = rsp.get('result') or {}
-        except (TypeError, ValueError):
-            rdt = {}
-        if not rdt:
-            _LOGGER.warning('Got petkit device records for %s failed: %s', self.device_name, rsp)
+            rdt = await self.get_t4_latest_records(api, pms)
+        else:
+            rsp = None
+            try:
+                rsp = await self.account.request(api, pms)
+                rdt = rsp.get('result') or {}
+            except (TypeError, ValueError):
+                rdt = {}
+            if not rdt:
+                _LOGGER.warning('Got petkit device records for %s failed: %s', self.device_name, rsp)
         self.detail['records'] = rdt
         return rdt
+
+    async def get_t4_latest_records(self, api, pms):
+        for i in range(0, 2):
+            pms['date'] = (datetime.datetime.today() - datetime.timedelta(days=i)).strftime('%Y%m%d')
+            rsp = None
+            try:
+                rsp = await self.account.request(api, pms)
+                rdt = rsp.get('result') or []
+            except (TypeError, ValueError):
+                rdt = []
+            if not rdt:
+                _LOGGER.warning('Got petkit device records for %s failed. pms:%s rsp:%s', self.device_name, pms, rsp)
+                continue
+            for v in rdt:
+                if v.get('eventType') == 10:
+                    return rdt
 
     async def turn_on(self, **kwargs):
         return await self.set_power(True)
